@@ -160,8 +160,12 @@ def get_screen_name(project_name: str, service_name: str) -> str:
 
 def is_service_running(project_name: str, name: str) -> bool:
     """Check if a service is already running."""
+    screen_name = get_screen_name(project_name, name)
     result = subprocess.run("screen -ls", shell=True, capture_output=True, text=True)
-    return get_screen_name(project_name, name) in result.stdout
+
+    # More robust check for screen session existence
+    # Look for either ".<screen_name>" pattern or directly for screen_name
+    return f".{screen_name}" in result.stdout or f"{screen_name}" in result.stdout
 
 
 def get_service_logs(project_name: str, name: str, lines: int = 10) -> str:
@@ -239,29 +243,59 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
 
         # First try to read startup errors
         error_log = f"/tmp/runnem-{name}-startup.log"
+        persistent_log = f"/tmp/runnem-{name}-failed.log"
         startup_errors = ""
+
+        # First try the startup log file
         try:
             if os.path.exists(error_log):
                 with open(error_log, "r") as f:
                     startup_errors = f.read().strip()
-                os.remove(error_log)  # Clean up
+
+                # Save to persistent log file
+                with open(persistent_log, "w") as f:
+                    f.write(startup_errors)
+
+                # Don't remove error_log immediately to allow for multiple reads
         except (IOError, OSError) as e:
             print(f"Error reading startup log: {e}")
 
+        # If no startup errors in the main log, check for the persistent log
+        if not startup_errors and os.path.exists(persistent_log):
+            try:
+                with open(persistent_log, "r") as f:
+                    startup_errors = f.read().strip()
+            except (IOError, OSError) as e:
+                print(f"Error reading persistent log: {e}")
+
         if startup_errors:
+            # Only show "Startup errors:" header if there are actual errors
             print("Startup errors:")
             print(startup_errors)
         else:
             # Fall back to screen logs if no startup errors
-            print(get_service_logs(project_name, name))
+            screen_logs = get_service_logs(project_name, name)
+            if "Unable to retrieve logs" in screen_logs:
+                print(
+                    "No logs available. The service may have failed to start correctly."
+                )
+            else:
+                print(screen_logs)
 
         print("―" * 40)
-        print(f"\nTry viewing full logs with: runnem log {name}")
+        print("\nTry running the service directly to see what's happening.")
 
         # Clean up any leftover processes
         port = get_service_port(name, config)
         if port and kill_port_process(port):
             print(f"🧹 Cleaned up processes using port {port}")
+
+        # Cleanup error log after displaying
+        try:
+            if os.path.exists(error_log):
+                os.remove(error_log)
+        except (IOError, OSError):
+            pass
 
         return False
     else:
@@ -288,8 +322,20 @@ def start_service_async(
     # Create a temporary file to capture startup errors
     error_log = f"/tmp/runnem-{name}-startup.log"
 
-    # Wrap the command to capture stderr
-    wrapped_command = f"{command} 2> {error_log}"
+    # Make sure the log file doesn't exist from previous runs
+    try:
+        if os.path.exists(error_log):
+            os.remove(error_log)
+    except (IOError, OSError):
+        pass
+
+    # Create a direct log file that persists even if screen session fails immediately
+    persistent_log = f"/tmp/runnem-{name}-failed.log"
+
+    # Wrap the command to capture stderr and stdout to both the screen and the error log
+    # Use simpler wrapping to avoid issues with complex commands
+    # This still captures exit status for non-zero exits
+    wrapped_command = f'({command}) 2>&1 | tee {error_log}; exit_status=$?; if [ $exit_status -ne 0 ]; then echo "Command exited with status $exit_status" >> {error_log}; fi'
 
     screen_name = get_screen_name(project_name, name)
     subprocess.run(
@@ -297,6 +343,19 @@ def start_service_async(
         shell=True,
         check=False,
     )
+
+    # Wait a moment to ensure the command has a chance to start and output initial logs
+    time.sleep(1)
+
+    # Copy logs to persistent storage immediately, even if the screen session died already
+    try:
+        if os.path.exists(error_log):
+            with open(error_log, "r") as src:
+                with open(persistent_log, "w") as dest:
+                    dest.write(src.read())
+    except (IOError, OSError):
+        pass
+
     return True
 
 
@@ -326,8 +385,8 @@ def start_service(name: str, config: Dict) -> None:
         return
 
     if start_service_async(project_name, name, service_config["command"]):
-        # Give the service a moment to start
-        time.sleep(2)
+        # Give the service a moment to start (3 seconds is a good middle ground)
+        time.sleep(3)
         check_service_status(project_name, name, config)
 
 
@@ -346,11 +405,46 @@ def list_services() -> None:
         print("⚠️ No services running.")
 
 
+def get_failed_service_logs(name: str) -> str:
+    """Get logs for a service that failed to start."""
+    error_log = f"/tmp/runnem-{name}-startup.log"
+    persistent_log = f"/tmp/runnem-{name}-failed.log"
+    logs = ""
+
+    # First try the normal error log
+    try:
+        if os.path.exists(error_log):
+            with open(error_log, "r") as f:
+                logs = f.read().strip()
+                if logs:
+                    return logs
+    except (IOError, OSError):
+        pass
+
+    # Then try the persistent log
+    try:
+        if os.path.exists(persistent_log):
+            with open(persistent_log, "r") as f:
+                logs = f.read().strip()
+                if logs:
+                    return logs
+    except (IOError, OSError) as e:
+        return f"Error reading logs: {e}"
+
+    return "No logs available for failed service."
+
+
 def view_logs(name: str, config: Dict) -> None:
     """Attach to a service's screen session to view logs."""
     project_name = config.get("project_name")
     if not is_service_running(project_name, name):
         print(f"⚠️ {name} is not running.")
+        # Try to retrieve logs from a failed service
+        logs = get_failed_service_logs(name)
+        print("\nLast known logs:")
+        print("―" * 40)
+        print(logs)
+        print("―" * 40)
         return
 
     screen_name = get_screen_name(project_name, name)
@@ -502,7 +596,7 @@ def get_other_project_services(current_project: str) -> List[str]:
     sessions = get_running_screen_sessions()
     other_services = []
 
-    expected_prefix = f"{SCREEN_PREFIX}-{current_project}-"
+    expected_prefix = f"{SCREEN_PREFIX}-{current_project}"
     for session in sessions:
         # Screen output format is like: "8261.runnem-flow-myna-server\t(Detached)"
         screen_name = session.split("\t")[0].split(".")[
@@ -619,4 +713,4 @@ def stop_service(name: str, config: Dict) -> None:
     if port and kill_port_process(port):
         print(f"🧹 Cleaned up processes using port {port}")
 
-    print(f"🛑 Stopped {name}")
+    print("🛑 Stopped " + name)
