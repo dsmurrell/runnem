@@ -177,7 +177,7 @@ def get_service_logs(project_name: str, name: str, lines: int = 10) -> str:
             shell=True,
             check=True,
         )
-        time.sleep(0.1)  # Give a moment for the file to be written
+        # time.sleep(0.1)  # Give a moment for the file to be written
 
         with open(f"/tmp/runnem-{name}.log", "r") as f:
             logs = f.readlines()
@@ -237,8 +237,9 @@ def kill_port_process(port: int) -> bool:
 def check_service_status(project_name: str, name: str, config: Dict) -> bool:
     """Check if a service started successfully and show appropriate message."""
     if not is_service_running(project_name, name):
-        print(f"\n❌ Failed to start {name}")
-        print("\nInitial logs:")
+        print(
+            f"❌ Failed to start {name}, try running the service directly to see what's happening."
+        )
         print("―" * 40)
 
         # First try to read startup errors
@@ -270,7 +271,6 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
 
         if startup_errors:
             # Only show "Startup errors:" header if there are actual errors
-            print("Startup errors:")
             print(startup_errors)
         else:
             # Fall back to screen logs if no startup errors
@@ -283,7 +283,6 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
                 print(screen_logs)
 
         print("―" * 40)
-        print("\nTry running the service directly to see what's happening.")
 
         # Clean up any leftover processes
         port = get_service_port(name, config)
@@ -299,11 +298,12 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
 
         return False
     else:
-        print(f"✅ Started {name}")
+        status_msg = f"✅ Started {name}"
         service_config = config.get("services", {}).get(name, {})
         url = service_config.get("url")
         if url:
-            print(f"   📎 {url}")
+            status_msg += f"   📎 {url}"
+        print(status_msg)
         return True
 
 
@@ -317,7 +317,7 @@ def start_service_async(
         return True
 
     if show_status:
-        print(f"\n🚀 Starting {name}...")
+        print(f"🚀 Starting {name}...")
 
     # Create a temporary file to capture startup errors
     error_log = f"/tmp/runnem-{name}-startup.log"
@@ -344,8 +344,8 @@ def start_service_async(
         check=False,
     )
 
-    # Wait a moment to ensure the command has a chance to start and output initial logs
-    time.sleep(1)
+    # Wait a brief moment to ensure the command has a chance to start and output initial logs
+    time.sleep(0.1)
 
     # Copy logs to persistent storage immediately, even if the screen session died already
     try:
@@ -385,8 +385,8 @@ def start_service(name: str, config: Dict) -> None:
         return
 
     if start_service_async(project_name, name, service_config["command"]):
-        # Give the service a moment to start (3 seconds is a good middle ground)
-        time.sleep(3)
+        # Give the service a moment to start (reduced to speed up startup)
+        time.sleep(0.1)
         check_service_status(project_name, name, config)
 
 
@@ -504,8 +504,11 @@ def start_all_services(config: Dict) -> None:
     services_with_deps = {name for name, deps in graph.items() if deps}
     independent_services = set(graph.keys()) - services_with_deps
 
-    # Start all independent services that aren't already running
-    print("\n🔄 Starting independent services...")
+    # Start all independent services asynchronously first
+    print("\n🔄 Starting independent services...\n")
+
+    # First, start all independent services in parallel without waiting for status
+    started_services = []
     for name in independent_services:
         if name not in services_to_start:
             continue
@@ -513,10 +516,16 @@ def start_all_services(config: Dict) -> None:
         if start_service_async(
             project_name, name, service_config["command"], show_status=True
         ):
-            check_service_status(project_name, name, config)
-        else:
-            print(f"\n❌ Failed to start {name}")
-            return
+            started_services.append(name)
+
+    # Give services a brief moment to initialize
+    if started_services:
+        time.sleep(0.2)
+        print("")  # Add a blank line to separate launches from statuses
+
+    # Then check their status
+    for name in started_services:
+        check_service_status(project_name, name, config)
 
     # Start dependent services after checking their dependencies
     if services_with_deps:
@@ -546,9 +555,14 @@ def start_all_services(config: Dict) -> None:
                 if start_service_async(
                     project_name, name, service_config["command"], show_status=True
                 ):
+                    # Brief wait to allow service to initialize
+                    time.sleep(0.2)
+                    print("")  # Add a blank line to separate launch from status
                     check_service_status(project_name, name, config)
                 else:
-                    print(f"\n❌ Failed to start {name}")
+                    print(
+                        f"❌ Failed to start {name}, try running the service directly to see what's happening."
+                    )
                     return
 
     print("\n✨ All services started!")
