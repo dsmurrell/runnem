@@ -1,67 +1,92 @@
-# runnem
+# Runnem
+**Light-weight service manager for local development projects**
 
-A service manager for managing multiple services in a project. runnem helps you manage and run multiple services in your project with a simple CLI interface.
+## Why Runnem?
+- **One command to rule them all** – start, stop and inspect every service in your project without memorising half-a-dozen shell scripts.
+- **Native speed & tooling** – runs processes directly (no mandatory Docker), leveraging battle-tested GNU screen under the hood.
+- **Multiple projects** – keeps services from different projects isolated so they never trample each other’s ports.
 
 ## Installation
-
 ```bash
-pip install runnem
+pip install runnem   # Python ≥ 3.8 on Linux, macOS or WSL-enabled Windows
 ```
 
-## Usage
-
-### Initialize a Project
-
+## Quick start
 ```bash
-runnem init myproject
+# 1 · Create a config for the current directory
+runnem init myproject            # omit the name to use the folder name
+
+# 2 · Edit runnem.yaml and add your services
+$EDITOR runnem.yaml
+
+# 3 · Launch everything
+runnem up                        # starts all services in the right order
+
+# 4 · Check what’s running
+runnem list                      # or: runnem ls
+
+# 5 · Stop when you’re done
+runnem down                      # stops every service cleanly
 ```
+> **Tip:** Need only one service? Pass its name to up or down, e.g. `runnem up api`.
 
-This will:
-1. Create a new project configuration in `~/.runnem/myproject.yaml`
-2. Create a `.runnem` file in the current directory with the project name
-
-### Manage Services
-
-```bash
-# Start all services
-runnem up all
-
-# Start a specific service
-runnem up api
-
-# Stop all services
-runnem down all
-
-# Stop a specific service
-runnem down api
-
-# List running services
-runnem list
-
-# View service logs
-runnem log api
-```
-
-## Project Configuration
-
-Each project has its own YAML configuration file stored in `~/.runnem/{project}.yaml`. Here's an example configuration:
-
+## Configuration overview (`runnem.yaml`)
 ```yaml
+project_name: myproject  # required
+
 services:
-  app:
-    command: "cd ~/projects/myproject/app && npm run dev"
-    port: 3000
-    url: "http://localhost:3000"
+  database:
+    command: cd database && docker-compose up
+    url: postgresql://localhost:5432
+
   api:
-    command: "cd ~/projects/myproject/api && python run.py"
-    port: 8000
-    url: "http://localhost:8000"
+    command: cd api && poetry run uvicorn main:app --reload --port 8000
+    url: http://localhost:8000/health
+    depends_on: [database]
+
+  frontend:
+    command: cd frontend && npm run dev
+    url: http://localhost:3000
+    depends_on: [api]
 ```
 
-## Auto-Detection
+| Key         | Required | Description |
+| ----------- | :------: | ----------- |
+| `command`   | ✅        | Shell command executed inside its own screen session. |
+| `url`       |          | Health-check endpoint; Runnem waits until it responds before starting dependants. |
+| `depends_on`|          | List of service names that must be running first. |
 
-runnem automatically detects the project you're working on by looking for a `.runnem` file in the current directory or any parent directory. This means you can run runnem commands from anywhere inside your project.
+> Ports are inferred from the `url` – specify one if you want automatic conflict resolution.
+
+## Everyday commands
+
+| Task                  | Command                  |
+| --------------------- | ------------------------ |
+| Start all services     | `runnem up`               |
+| Start one service      | `runnem up <service>`     |
+| Stop all services      | `runnem down`             |
+| Stop one service       | `runnem down <service>`   |
+| View live logs         | `runnem log <service>`    |
+| List status            | `runnem list` (or `ls`)   |
+| Free a busy port       | `runnem kill <port>`      |
+
+## Multiple projects
+Runnem looks for the nearest `runnem.yaml` when you run a command.  
+If services from another project are still running you’ll see a warning and can stop them with:
+
+```bash
+runnem down     # executed from *any* project directory
+```
+
+## Contributing
+Found a bug, want a feature or to polish the docs? PRs are welcome!
+
+- Fork the repo & `git clone` it.
+- `pip install -e .` inside a virtualenv.
+- Create a feature branch (`git switch -c my-fix`).
+- Commit with clear messages and open a PR.
+
+Please keep changes focused and update tests/docs where relevant.
 
 ## License
-
-MIT License
+MIT © 2025 Runnem contributors
