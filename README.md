@@ -1,10 +1,10 @@
 # Runnem
-**Light-weight service manager for local development projects**
+**Light-weight service manager for local project development. Makes switching between projects a breeze.**
 
 ## Why Runnem?
 - **One command to rule them all** – start, stop and inspect every service in your project without memorising half-a-dozen shell scripts.
 - **Native speed & tooling** – runs processes directly (no mandatory Docker), leveraging battle-tested GNU screen under the hood.
-- **Multiple projects** – keeps services from different projects isolated so they never trample each other’s ports.
+- **Port-safe project switching** – makes it easy to switch between projects while avoiding port clashes.
 
 ## Installation
 ```bash
@@ -30,7 +30,7 @@ runnem down                      # stops every service cleanly
 ```
 > **Tip:** Need only one service? Pass its name to up or down, e.g. `runnem up api`.
 
-## Configuration overview (`runnem.yaml`)
+## Configuration example (`runnem.yaml`)
 ```yaml
 project_name: myproject  # required
 
@@ -53,7 +53,7 @@ services:
 | Key         | Required | Description |
 | ----------- | :------: | ----------- |
 | `command`   | ✅        | Shell command executed inside its own screen session. |
-| `url`       |          | Health-check endpoint; Runnem waits until it responds before starting dependants. |
+| `url`       |          | Health-check endpoint and source of the port number; Runnem waits for it to respond before starting dependants. |
 | `depends_on`|          | List of service names that must be running first. |
 
 > Ports are inferred from the `url` – specify one if you want automatic conflict resolution.
@@ -85,8 +85,6 @@ Found a bug, want a feature or to polish the docs? PRs are welcome!
 - `pip install -e .` inside a virtualenv.
 - Create a feature branch (`git switch -c my-fix`).
 - Commit with clear messages and open a PR.
-
-Please keep changes focused and update tests/docs where relevant.
 
 ## License
 MIT © 2025 Runnem contributors
