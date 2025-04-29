@@ -1,19 +1,20 @@
 """Command-line interface for runnem."""
 
 import click
+
 from .core import (
-    get_project_name,
+    check_other_projects,
+    check_port_conflict,
     get_project_config,
+    get_project_name,
     init_project,
-    start_service,
-    stop_service,
-    view_logs,
+    kill_port_process,
     list_all_services,
     start_all_services,
-    check_other_projects,
+    start_service,
     stop_all_running_services,
-    kill_port_process,
-    check_port_conflict,
+    stop_service,
+    view_logs,
 )
 
 
@@ -63,7 +64,7 @@ def up(service):
 
     # Check for other project services before doing anything else
     if check_other_projects(project_name):
-        return
+        raise click.Abort()
 
     try:
         config = get_project_config(project_name)

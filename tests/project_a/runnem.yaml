@@ -1,0 +1,24 @@
+project_name: {'project_name': 'project_a', 'services': {'service1': {'command': 'sleep 10', 'url': 'http://localhost:8001'}, 'service2': {'command': 'sleep 10', 'url': 'http://localhost:8002', 'depends_on': ['service1']}}}
+
+services:
+
+  database:
+    command: cd ~/projects/myproject/database && docker-compose up
+    url: postgresql://localhost:5432
+
+  api:
+    command: |
+      cd ~/projects/myproject/api && \
+      if [ ! -f "localhost.pem" ] || [ ! -f "localhost-key.pem" ]; then \
+          echo "SSL certificates not found! Generating with mkcert..." && \
+          mkcert localhost; \
+      fi && \
+      direnv exec . poetry run uvicorn app.main:api --reload --port 8000 --log-level debug \
+      --ssl-keyfile localhost-key.pem --ssl-certfile localhost.pem
+    url: https://localhost:8000/docs
+    depends_on: ["database"]
+
+  frontend:
+    command: cd ~/projects/myproject/frontend && npm run dev
+    url: http://localhost:3000
+    depends_on: ["api"]

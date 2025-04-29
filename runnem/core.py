@@ -3,13 +3,14 @@
 import os
 import subprocess
 import time
-import yaml
-from pathlib import Path
-from typing import Dict, Optional, List, Tuple
-import requests
-from collections import defaultdict
 import warnings
+from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import requests
 import urllib3
+import yaml
 
 warnings.filterwarnings(
     "ignore",
@@ -118,12 +119,10 @@ def find_project_config() -> Optional[Tuple[str, Dict]]:
     while current_dir != current_dir.parent:
         config_path = current_dir / CONFIG_FILE
         if config_path.exists():
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 config = yaml.safe_load(f)
                 if not isinstance(config, dict) or "project_name" not in config:
-                    print(
-                        f"⚠️ Invalid config file at {config_path}: missing project_name"
-                    )
+                    print(f"⚠️ Invalid config file at {config_path}: missing project_name")
                     return None
                 return config["project_name"], config
         current_dir = current_dir.parent
@@ -140,15 +139,11 @@ def get_project_config(project_name: str) -> Dict:
     """Load project configuration from YAML file."""
     result = find_project_config()
     if not result:
-        raise FileNotFoundError(
-            "Project configuration not found. Run 'runnem init <project_name>' first."
-        )
+        raise FileNotFoundError("Project configuration not found. Run 'runnem init <project_name>' first.")
 
     config_name, config = result
     if config_name != project_name:
-        raise FileNotFoundError(
-            f"Project '{project_name}' not found. Found project '{config_name}' instead."
-        )
+        raise FileNotFoundError(f"Project '{project_name}' not found. Found project '{config_name}' instead.")
 
     return config
 
@@ -179,11 +174,11 @@ def get_service_logs(project_name: str, name: str, lines: int = 10) -> str:
         )
         # time.sleep(0.1)  # Give a moment for the file to be written
 
-        with open(f"/tmp/runnem-{name}.log", "r") as f:
+        with open(f"/tmp/runnem-{name}.log") as f:
             logs = f.readlines()
             return "".join(logs[-lines:])
-    except (subprocess.SubprocessError, IOError) as e:
-        return f"Unable to retrieve logs: {str(e)}"
+    except (OSError, subprocess.SubprocessError) as e:
+        return f"Unable to retrieve logs: {e!s}"
 
 
 def get_service_port(name: str, config: Dict) -> Optional[int]:
@@ -237,9 +232,7 @@ def kill_port_process(port: int) -> bool:
 def check_service_status(project_name: str, name: str, config: Dict) -> bool:
     """Check if a service started successfully and show appropriate message."""
     if not is_service_running(project_name, name):
-        print(
-            f"❌ Failed to start {name}, try running the service directly to see what's happening."
-        )
+        print(f"❌ Failed to start {name}, try running the service directly to see what's happening.")
         print("―" * 40)
 
         # First try to read startup errors
@@ -250,7 +243,7 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
         # First try the startup log file
         try:
             if os.path.exists(error_log):
-                with open(error_log, "r") as f:
+                with open(error_log) as f:
                     startup_errors = f.read().strip()
 
                 # Save to persistent log file
@@ -258,15 +251,15 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
                     f.write(startup_errors)
 
                 # Don't remove error_log immediately to allow for multiple reads
-        except (IOError, OSError) as e:
+        except OSError as e:
             print(f"Error reading startup log: {e}")
 
         # If no startup errors in the main log, check for the persistent log
         if not startup_errors and os.path.exists(persistent_log):
             try:
-                with open(persistent_log, "r") as f:
+                with open(persistent_log) as f:
                     startup_errors = f.read().strip()
-            except (IOError, OSError) as e:
+            except OSError as e:
                 print(f"Error reading persistent log: {e}")
 
         if startup_errors:
@@ -276,9 +269,7 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
             # Fall back to screen logs if no startup errors
             screen_logs = get_service_logs(project_name, name)
             if "Unable to retrieve logs" in screen_logs:
-                print(
-                    "No logs available. The service may have failed to start correctly."
-                )
+                print("No logs available. The service may have failed to start correctly.")
             else:
                 print(screen_logs)
 
@@ -293,7 +284,7 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
         try:
             if os.path.exists(error_log):
                 os.remove(error_log)
-        except (IOError, OSError):
+        except OSError:
             pass
 
         return False
@@ -307,9 +298,7 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
         return True
 
 
-def start_service_async(
-    project_name: str, name: str, command: str, show_status: bool = True
-) -> bool:
+def start_service_async(project_name: str, name: str, command: str, show_status: bool = True) -> bool:
     """Start a service asynchronously and optionally show its status."""
     if is_service_running(project_name, name):
         if show_status:
@@ -326,7 +315,7 @@ def start_service_async(
     try:
         if os.path.exists(error_log):
             os.remove(error_log)
-    except (IOError, OSError):
+    except OSError:
         pass
 
     # Create a direct log file that persists even if screen session fails immediately
@@ -350,10 +339,10 @@ def start_service_async(
     # Copy logs to persistent storage immediately, even if the screen session died already
     try:
         if os.path.exists(error_log):
-            with open(error_log, "r") as src:
+            with open(error_log) as src:
                 with open(persistent_log, "w") as dest:
                     dest.write(src.read())
-    except (IOError, OSError):
+    except OSError:
         pass
 
     return True
@@ -393,9 +382,7 @@ def start_service(name: str, config: Dict) -> None:
 def list_services() -> None:
     """List all running services."""
     result = subprocess.run("screen -ls", shell=True, capture_output=True, text=True)
-    running_services = [
-        line for line in result.stdout.split("\n") if SCREEN_PREFIX in line
-    ]
+    running_services = [line for line in result.stdout.split("\n") if SCREEN_PREFIX in line]
 
     if running_services:
         print("\n🟢 Running Services:")
@@ -414,21 +401,21 @@ def get_failed_service_logs(name: str) -> str:
     # First try the normal error log
     try:
         if os.path.exists(error_log):
-            with open(error_log, "r") as f:
+            with open(error_log) as f:
                 logs = f.read().strip()
                 if logs:
                     return logs
-    except (IOError, OSError):
+    except OSError:
         pass
 
     # Then try the persistent log
     try:
         if os.path.exists(persistent_log):
-            with open(persistent_log, "r") as f:
+            with open(persistent_log) as f:
                 logs = f.read().strip()
                 if logs:
                     return logs
-    except (IOError, OSError) as e:
+    except OSError as e:
         return f"Error reading logs: {e}"
 
     return "No logs available for failed service."
@@ -457,11 +444,7 @@ def list_all_services(config: Dict) -> None:
     print("\n📋 Services Status:")
     services = list(config.get("services", {}).keys())
     for service_name in services:
-        status = (
-            "🟢 Running"
-            if is_service_running(project_name, service_name)
-            else "⚫️ Stopped"
-        )
+        status = "🟢 Running" if is_service_running(project_name, service_name) else "⚫️ Stopped"
         service_config = config.get("services", {}).get(service_name, {})
         url = service_config.get("url", "")
         print(f"\n - {service_name}: {status}")
@@ -485,9 +468,7 @@ def start_all_services(config: Dict) -> None:
 
     # First identify which services need to be started
     all_services = list(config.get("services", {}).keys())
-    services_to_start = [
-        name for name in all_services if not is_service_running(project_name, name)
-    ]
+    services_to_start = [name for name in all_services if not is_service_running(project_name, name)]
 
     if not services_to_start:
         print("✨ All services are already running!")
@@ -513,9 +494,7 @@ def start_all_services(config: Dict) -> None:
         if name not in services_to_start:
             continue
         service_config = config["services"][name]
-        if start_service_async(
-            project_name, name, service_config["command"], show_status=True
-        ):
+        if start_service_async(project_name, name, service_config["command"], show_status=True):
             started_services.append(name)
 
     # Give services a brief moment to initialize
@@ -552,17 +531,13 @@ def start_all_services(config: Dict) -> None:
 
             if deps_ready:
                 service_config = config["services"][name]
-                if start_service_async(
-                    project_name, name, service_config["command"], show_status=True
-                ):
+                if start_service_async(project_name, name, service_config["command"], show_status=True):
                     # Brief wait to allow service to initialize
                     time.sleep(0.2)
                     print("")  # Add a blank line to separate launch from status
                     check_service_status(project_name, name, config)
                 else:
-                    print(
-                        f"❌ Failed to start {name}, try running the service directly to see what's happening."
-                    )
+                    print(f"❌ Failed to start {name}, try running the service directly to see what's happening.")
                     return
 
     print("\n✨ All services started!")
@@ -584,7 +559,7 @@ def init_project(project_name: str = None) -> None:
     template_path = Path(__file__).parent / "template.yaml"
 
     # Read and format the template
-    with open(template_path, "r") as f:
+    with open(template_path) as f:
         config_content = f.read().format(project_name=project_name)
 
     # Write the config file
@@ -598,11 +573,7 @@ def init_project(project_name: str = None) -> None:
 def get_running_screen_sessions() -> List[str]:
     """Get all running screen sessions that start with the runnem prefix."""
     result = subprocess.run("screen -ls", shell=True, capture_output=True, text=True)
-    return [
-        line.strip()
-        for line in result.stdout.split("\n")
-        if SCREEN_PREFIX in line and line.strip()
-    ]
+    return [line.strip() for line in result.stdout.split("\n") if SCREEN_PREFIX in line and line.strip()]
 
 
 def get_other_project_services(current_project: str) -> List[str]:
@@ -613,13 +584,9 @@ def get_other_project_services(current_project: str) -> List[str]:
     expected_prefix = f"{SCREEN_PREFIX}-{current_project}"
     for session in sessions:
         # Screen output format is like: "8261.runnem-flow-myna-server\t(Detached)"
-        screen_name = session.split("\t")[0].split(".")[
-            -1
-        ]  # Get "runnem-flow-myna-server"
+        screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-flow-myna-server"
         # If it's a runnem service but doesn't have our project prefix, it's from another project
-        if screen_name.startswith(f"{SCREEN_PREFIX}-") and not screen_name.startswith(
-            expected_prefix
-        ):
+        if screen_name.startswith(f"{SCREEN_PREFIX}-") and not screen_name.startswith(expected_prefix):
             other_services.append(session)
 
     return other_services
@@ -637,9 +604,7 @@ def stop_all_running_services() -> None:
     services_to_stop = []
     for session in sessions:
         # Screen output format is like: "8261.runnem-flow-myna-server\t(Detached)"
-        screen_name = session.split("\t")[0].split(".")[
-            -1
-        ]  # Get "runnem-flow-myna-server"
+        screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-flow-myna-server"
         if not screen_name.startswith(f"{SCREEN_PREFIX}-"):
             continue
 
@@ -652,19 +617,13 @@ def stop_all_running_services() -> None:
             continue
 
         project, service = parts
-        services_to_stop.append(
-            {"screen_name": screen_name, "project": project, "service": service}
-        )
+        services_to_stop.append({"screen_name": screen_name, "project": project, "service": service})
 
     # Then stop each service
     for service in services_to_stop:
         # Wrap all screen commands in a subshell and redirect all output
         subprocess.run(
-            f"( screen -S {service['screen_name']} -X stuff $'\\003' && "
-            f"sleep 0.5 && "
-            f"screen -S {service['screen_name']} -X kill && "
-            f"sleep 0.1 && "
-            f"screen -X -S {service['screen_name']} quit ) >/dev/null 2>&1",
+            f"( screen -S {service['screen_name']} -X stuff $'\\003' && sleep 0.5 && screen -S {service['screen_name']} -X kill && sleep 0.1 && screen -X -S {service['screen_name']} quit ) >/dev/null 2>&1",
             shell=True,
             check=False,
         )
@@ -680,18 +639,14 @@ def check_other_projects(current_project: str) -> bool:
         print("\n⚠️ Found running services from other projects:\n")
         for session in other_services:
             # Screen output format is like: "8261.runnem-flow-myna-server\t(Detached)"
-            screen_name = session.split("\t")[0].split(".")[
-                -1
-            ]  # Get "runnem-flow-myna-server"
+            screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-flow-myna-server"
             # Get everything after runnem- as the service identifier
             prefix_len = len(f"{SCREEN_PREFIX}-")
             service_id = screen_name[prefix_len:]  # Remove prefix
             # Split on the last hyphen to separate project and service
             project, service = service_id.rsplit("-", 1)
             print(f" - {service} (from project '{project}')")
-        print(
-            "\nYou must stop all services from other projects before using runnem here."
-        )
+        print("\nYou must stop all services from other projects before using runnem here.")
         print("Run 'runnem down' to stop all services.")
         return True
 
@@ -713,11 +668,7 @@ def stop_service(name: str, config: Dict) -> None:
 
     # Wrap all screen commands in a subshell and redirect all output
     subprocess.run(
-        f"( screen -S {screen_name} -X stuff $'\\003' && "
-        f"sleep 0.5 && "
-        f"screen -S {screen_name} -X kill && "
-        f"sleep 0.1 && "
-        f"screen -X -S {screen_name} quit ) >/dev/null 2>&1",
+        f"( screen -S {screen_name} -X stuff $'\\003' && sleep 0.5 && screen -S {screen_name} -X kill && sleep 0.1 && screen -X -S {screen_name} quit ) >/dev/null 2>&1",
         shell=True,
         check=False,
     )
