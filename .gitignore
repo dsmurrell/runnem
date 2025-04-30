@@ -18,6 +18,5 @@ env/
 
 # Project specific
 *.log
-/tmp/runnem-*
 
 notes.diff

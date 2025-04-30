@@ -200,24 +200,6 @@ def is_service_running(project_name: str, name: str) -> bool:
     return f".{screen_name}" in result.stdout or f"{screen_name}" in result.stdout
 
 
-def get_service_logs(project_name: str, name: str, lines: int = 10) -> str:
-    """Get the last N lines of logs from a service."""
-    screen_name = get_screen_name(project_name, name)
-    try:
-        subprocess.run(
-            f"screen -S {screen_name} -X hardcopy /tmp/runnem-{name}.log",
-            shell=True,
-            check=True,
-        )
-        # time.sleep(0.1)  # Give a moment for the file to be written
-
-        with open(f"/tmp/runnem-{name}.log") as f:
-            logs = f.readlines()
-            return "".join(logs[-lines:])
-    except (OSError, subprocess.SubprocessError) as e:
-        return f"Unable to retrieve logs: {e!s}"
-
-
 def get_service_port(name: str, config: Dict) -> Optional[int]:
     """Get the port number from the service configuration."""
     service_config = config.get("services", {}).get(name, {})
@@ -377,35 +359,6 @@ def list_services() -> None:
             print(f" - {service.strip()}")
     else:
         print("⚠️ No services running.")
-
-
-def get_failed_service_logs(name: str) -> str:
-    """Get logs for a service that failed to start."""
-    error_log = f"/tmp/runnem-{name}-startup.log"
-    persistent_log = f"/tmp/runnem-{name}-failed.log"
-    logs = ""
-
-    # First try the normal error log
-    try:
-        if os.path.exists(error_log):
-            with open(error_log) as f:
-                logs = f.read().strip()
-                if logs:
-                    return logs
-    except OSError:
-        pass
-
-    # Then try the persistent log
-    try:
-        if os.path.exists(persistent_log):
-            with open(persistent_log) as f:
-                logs = f.read().strip()
-                if logs:
-                    return logs
-    except OSError as e:
-        return f"Error reading logs: {e}"
-
-    return "No logs available for failed service."
 
 
 def _inject_detach_hint(screen_name: str) -> None:
