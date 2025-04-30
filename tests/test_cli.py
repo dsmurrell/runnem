@@ -74,6 +74,4 @@ def test_cli_help(cli_runner):
     """Test the help command."""
     result = cli_runner.invoke(main, ["--help"])
     assert result.exit_code == 0
-    assert (
-        "A service manager for managing multiple services in a project" in result.output
-    )
+    assert "A service manager for managing multiple services in a project" in result.output

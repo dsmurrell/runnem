@@ -92,14 +92,14 @@ def setup_projects(project_a_config, project_b_config):
         # Create project A
         os.makedirs("project_a", exist_ok=True)
         os.chdir("project_a")
-        init_project(project_a_config)
+        init_project("project_a")
         project_a_dir = os.getcwd()
         os.chdir("..")
 
         # Create project B
         os.makedirs("project_b", exist_ok=True)
         os.chdir("project_b")
-        init_project(project_b_config)
+        init_project("project_b")
         project_b_dir = os.getcwd()
         os.chdir("..")
 
@@ -119,9 +119,7 @@ def test_project_switching_scenario(
     runner = CliRunner()
 
     # Mock screen session management
-    with patch("runnem.core.subprocess.run", side_effect=mock_subprocess_run), patch(
-        "runnem.core.get_running_screen_sessions", side_effect=mock_sessions
-    ):
+    with patch("runnem.core.subprocess.run", side_effect=mock_subprocess_run), patch("runnem.core.get_running_screen_sessions", side_effect=mock_sessions):
         # Start project A
         os.chdir(project_a_dir)
         result = runner.invoke(cli_main, ["up"], input="y\n")
@@ -178,9 +176,7 @@ def test_project_switching_with_ports(
     runner = CliRunner()
 
     # Mock screen session management
-    with patch("runnem.core.subprocess.run", side_effect=mock_subprocess_run), patch(
-        "runnem.core.get_running_screen_sessions", side_effect=mock_sessions
-    ):
+    with patch("runnem.core.subprocess.run", side_effect=mock_subprocess_run), patch("runnem.core.get_running_screen_sessions", side_effect=mock_sessions):
         # Start project A
         os.chdir(project_a_dir)
         result = runner.invoke(cli_main, ["up"], input="y\n")

@@ -1,6 +1,8 @@
 import pytest
+from unittest.mock import MagicMock, patch
 
 from runnem.core import (
+    SCREEN_PREFIX,
     build_dependency_graph,
     check_port_conflict,
     detect_cycles,
@@ -61,6 +63,42 @@ def cyclic_config():
             },
         },
     }
+
+
+@pytest.fixture
+def mock_screen_sessions():
+    """Mock screen session management."""
+    _sessions = []
+
+    def _mock_sessions():
+        return _sessions
+
+    def _add_session(project_name: str, service_name: str):
+        # Format: "8261.runnem-project_a-service1\t(Detached)"
+        session = f"8261.{SCREEN_PREFIX}-{project_name}-{service_name}\t(Detached)"
+        _sessions.append(session)
+
+    def _clear_sessions():
+        _sessions.clear()
+
+    return _mock_sessions, _add_session, _clear_sessions
+
+
+@pytest.fixture
+def mock_subprocess_run():
+    """Mock subprocess.run to simulate screen commands."""
+
+    def _mock_run(*args, **kwargs):
+        command = kwargs.get("shell", False) and kwargs.get("capture_output", False)
+        if command and "screen -ls" in str(args):
+            # Return a mock screen list result
+            mock_result = MagicMock()
+            mock_result.stdout = "\n".join(_mock_run.sessions)
+            return mock_result
+        return MagicMock()
+
+    _mock_run.sessions = []
+    return _mock_run
 
 
 def test_build_dependency_graph(complex_config):
@@ -173,3 +211,26 @@ def test_service_lifecycle_with_port(complex_config):
     # Stop service
     stop_service(service_name, complex_config)
     assert not check_port_conflict(port)
+
+
+def test_start_already_running_service(complex_config, mock_screen_sessions, mock_subprocess_run):
+    """Test that starting an already running service shows a warning."""
+    mock_sessions, add_session, clear_sessions = mock_screen_sessions
+    service_name = "api"
+    project_name = complex_config["project_name"]
+
+    # Mock screen session management
+    with patch("runnem.core.subprocess.run", side_effect=mock_subprocess_run), patch("runnem.core.get_running_screen_sessions", side_effect=mock_sessions), patch("runnem.core.print") as mock_print:
+        # Simulate service already running
+        add_session(project_name, service_name)
+        mock_subprocess_run.sessions = mock_sessions()
+
+        # Try to start the service again
+        start_service(service_name, complex_config)
+
+        # Verify warning was printed
+        mock_print.assert_any_call(f"⚠️ {service_name} is already running in project '{project_name}'.")
+
+        # Clean up
+        clear_sessions()
+        mock_subprocess_run.sessions = []
