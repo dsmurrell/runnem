@@ -3,6 +3,8 @@
 # Exit on error
 set -e
 
+# NB: Make sure you bump the version in pyproject.toml first
+
 # Run tests
 echo "🧪 Running tests..."
 python -m pytest tests/
