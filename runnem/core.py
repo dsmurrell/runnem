@@ -561,8 +561,8 @@ def get_other_project_services(current_project: str) -> List[str]:
 
     expected_prefix = f"{SCREEN_PREFIX}-{current_project}"
     for session in sessions:
-        # Screen output format is like: "8261.runnem-flow-myna-server\t(Detached)"
-        screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-flow-myna-server"
+        # Screen output format is like: "8261.runnem-project-name-server\t(Detached)"
+        screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-project-name-server"
         # If it's a runnem service but doesn't have our project prefix, it's from another project
         if screen_name.startswith(f"{SCREEN_PREFIX}-") and not screen_name.startswith(expected_prefix):
             other_services.append(session)
@@ -581,8 +581,8 @@ def stop_all_running_services() -> None:
     # First, collect all the services we need to stop
     services_to_stop = []
     for session in sessions:
-        # Screen output format is like: "8261.runnem-flow-myna-server\t(Detached)"
-        screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-flow-myna-server"
+        # Screen output format is like: "8261.runnem-project-name-server\t(Detached)"
+        screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-project-name-server"
         if not screen_name.startswith(f"{SCREEN_PREFIX}-"):
             continue
 
@@ -616,8 +616,8 @@ def check_other_projects(current_project: str) -> bool:
     if other_services:
         print("\n⚠️ Found running services from other projects:\n")
         for session in other_services:
-            # Screen output format is like: "8261.runnem-flow-myna-server\t(Detached)"
-            screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-flow-myna-server"
+            # Screen output format is like: "8261.runnem-project-name-server\t(Detached)"
+            screen_name = session.split("\t")[0].split(".")[-1]  # Get "runnem-project-name-server"
             # Get everything after runnem- as the service identifier
             prefix_len = len(f"{SCREEN_PREFIX}-")
             service_id = screen_name[prefix_len:]  # Remove prefix
