@@ -1,6 +1,7 @@
 """Command-line interface for runnem."""
 
 import click
+from importlib.metadata import version
 
 from .core import (
     check_other_projects,
@@ -41,6 +42,7 @@ Examples:
     $ runnem kill 3000
 """
 )
+@click.version_option(version=version("runnem"), message="runnem version %(version)s")
 def main():
     """runnem - A service manager for managing multiple services in a project."""
     pass

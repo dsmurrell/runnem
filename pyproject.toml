@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "runnem"
-version = "0.1.0"
+version = "0.1.1"
 description = "A service manager for managing multiple services in a project"
 authors = [
     { name = "Daniel Murrell", email = "dsmurrell@gmail.com" }
