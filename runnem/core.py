@@ -468,6 +468,22 @@ def start_all_services(config: Dict) -> None:
     for name in started_services:
         check_service_status(project_name, name, config)
 
+    # Wait a moment to catch any immediate failures
+    print("\n⏳ Checking service health...")
+    time.sleep(2)  # Give services a moment to start and potentially fail
+
+    # Check status again to catch any immediate failures
+    any_failures = False
+    for name in started_services:
+        if not is_service_running(project_name, name):
+            any_failures = True
+            # Only show status for failed services
+            check_service_status(project_name, name, config)
+
+    if any_failures:
+        print("\n⚠️ Some services failed to start properly. Check the logs with 'runnem log <service>' for details.")
+        return
+
     # Start dependent services after checking their dependencies
     if services_with_deps:
         print("\n🔄 Starting dependent services...")
