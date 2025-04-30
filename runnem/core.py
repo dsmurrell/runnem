@@ -4,6 +4,8 @@ import os
 import subprocess
 import time
 import warnings
+import gzip
+import shutil
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -22,6 +24,41 @@ SCREEN_PREFIX = "runnem"
 CONFIG_FILE = "runnem.yaml"
 MAX_DEPENDENCY_RETRIES = 3
 DEPENDENCY_RETRY_DELAY = 2
+
+# Logging configuration
+RUNNEM_HOME = Path(os.getenv("RUNNEM_HOME", Path.home() / ".runnem"))
+LOG_MAX_BYTES = 100 * 1024 * 1024  # 100 MB per service
+LOG_BACKUPS = 3  # keep last 3 compressed archives
+
+
+def get_log_dir(project_name: str) -> Path:
+    """Get the log directory for a project."""
+    log_dir = RUNNEM_HOME / "logs" / project_name
+    log_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return log_dir
+
+
+def get_log_path(project_name: str, service_name: str) -> Path:
+    """Get the log file path for a service."""
+    return get_log_dir(project_name) / f"{service_name}.log"
+
+
+def rotate_log(log_path: Path) -> None:
+    """Rotate a log file if it exceeds the maximum size."""
+    if not log_path.exists() or log_path.stat().st_size < LOG_MAX_BYTES:
+        return
+
+    # Create timestamped archive
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    archive = log_path.with_suffix(f".{ts}.gz")
+    with open(log_path, "rb") as src, gzip.open(archive, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    log_path.unlink()  # start fresh
+
+    # Prune old archives
+    archives = sorted(log_path.parent.glob(f"{log_path.stem}.*.gz"))
+    for old in archives[:-LOG_BACKUPS]:
+        old.unlink(missing_ok=True)
 
 
 def build_dependency_graph(config: Dict) -> Dict[str, List[str]]:
@@ -235,43 +272,13 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
         print(f"❌ Failed to start {name}, try running the service directly to see what's happening.")
         print("―" * 40)
 
-        # First try to read startup errors
-        error_log = f"/tmp/runnem-{name}-startup.log"
-        persistent_log = f"/tmp/runnem-{name}-failed.log"
-        startup_errors = ""
-
-        # First try the startup log file
-        try:
-            if os.path.exists(error_log):
-                with open(error_log) as f:
-                    startup_errors = f.read().strip()
-
-                # Save to persistent log file
-                with open(persistent_log, "w") as f:
-                    f.write(startup_errors)
-
-                # Don't remove error_log immediately to allow for multiple reads
-        except OSError as e:
-            print(f"Error reading startup log: {e}")
-
-        # If no startup errors in the main log, check for the persistent log
-        if not startup_errors and os.path.exists(persistent_log):
-            try:
-                with open(persistent_log) as f:
-                    startup_errors = f.read().strip()
-            except OSError as e:
-                print(f"Error reading persistent log: {e}")
-
-        if startup_errors:
-            # Only show "Startup errors:" header if there are actual errors
-            print(startup_errors)
+        # Try to read logs from the log file
+        log_path = get_log_path(project_name, name)
+        if log_path.exists():
+            with open(log_path) as f:
+                print(f.read())
         else:
-            # Fall back to screen logs if no startup errors
-            screen_logs = get_service_logs(project_name, name)
-            if "Unable to retrieve logs" in screen_logs:
-                print("No logs available. The service may have failed to start correctly.")
-            else:
-                print(screen_logs)
+            print("No logs available. The service may have failed to start correctly.")
 
         print("―" * 40)
 
@@ -280,13 +287,6 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
         if port and kill_port_process(port):
             print(f"🧹 Cleaned up processes using port {port}")
 
-        # Cleanup error log after displaying
-        try:
-            if os.path.exists(error_log):
-                os.remove(error_log)
-        except OSError:
-            pass
-
         return False
     else:
         status_msg = f"✅ Started {name}"
@@ -294,6 +294,8 @@ def check_service_status(project_name: str, name: str, config: Dict) -> bool:
         url = service_config.get("url")
         if url:
             status_msg += f"   📎 {url}"
+        log_path = get_log_path(project_name, name)
+        status_msg += f"   📝 {log_path}"
         print(status_msg)
         return True
 
@@ -308,42 +310,22 @@ def start_service_async(project_name: str, name: str, command: str, show_status:
     if show_status:
         print(f"🚀 Starting {name}...")
 
-    # Create a temporary file to capture startup errors
-    error_log = f"/tmp/runnem-{name}-startup.log"
+    # Set up logging
+    log_path = get_log_path(project_name, name)
+    rotate_log(log_path)  # Archive if the previous run got too big
 
-    # Make sure the log file doesn't exist from previous runs
-    try:
-        if os.path.exists(error_log):
-            os.remove(error_log)
-    except OSError:
-        pass
-
-    # Create a direct log file that persists even if screen session fails immediately
-    persistent_log = f"/tmp/runnem-{name}-failed.log"
-
-    # Wrap the command to capture stderr and stdout to both the screen and the error log
-    # Use simpler wrapping to avoid issues with complex commands
-    # This still captures exit status for non-zero exits
-    wrapped_command = f'({command}) 2>&1 | tee {error_log}; exit_status=$?; if [ $exit_status -ne 0 ]; then echo "Command exited with status $exit_status" >> {error_log}; fi'
+    # Wrap the command to capture stderr and stdout to both the screen and the log file
+    wrapped_command = f"({command}) 2>&1 | tee -a {log_path}"
 
     screen_name = get_screen_name(project_name, name)
     subprocess.run(
-        f"screen -dmS {screen_name} bash -c '{wrapped_command}'",
+        f"screen -L -Logfile {log_path} -dmS {screen_name} bash -c '{wrapped_command}'",
         shell=True,
         check=False,
     )
 
     # Wait a brief moment to ensure the command has a chance to start and output initial logs
     time.sleep(0.1)
-
-    # Copy logs to persistent storage immediately, even if the screen session died already
-    try:
-        if os.path.exists(error_log):
-            with open(error_log) as src:
-                with open(persistent_log, "w") as dest:
-                    dest.write(src.read())
-    except OSError:
-        pass
 
     return True
 
@@ -421,20 +403,42 @@ def get_failed_service_logs(name: str) -> str:
     return "No logs available for failed service."
 
 
+def _inject_detach_hint(screen_name: str) -> None:
+    """Write a one-off hint into the screen window itself."""
+    hint = "--- (runnem)  Detach with Ctrl+A then still holding Ctrl, press D ---\n"
+    # Add the hint without clearing the screen
+    subprocess.run(
+        f"screen -S {screen_name} -X stuff '{hint}'",
+        shell=True,
+        check=False,
+    )
+    # Force a redraw
+    subprocess.run(
+        f"screen -S {screen_name} -X redraw",
+        shell=True,
+        check=False,
+    )
+
+
 def view_logs(name: str, config: Dict) -> None:
-    """Attach to a service's screen session to view logs."""
+    """View logs for a service."""
     project_name = config.get("project_name")
     if not is_service_running(project_name, name):
         print(f"⚠️ {name} is not running.")
-        # Try to retrieve logs from a failed service
-        logs = get_failed_service_logs(name)
-        print("\nLast known logs:")
-        print("―" * 40)
-        print(logs)
-        print("―" * 40)
+        # Try to retrieve logs from the log file
+        log_path = get_log_path(project_name, name)
+        if log_path.exists():
+            print("\nLast known logs:")
+            print("―" * 40)
+            with open(log_path) as f:
+                print(f.read())
+            print("―" * 40)
+        else:
+            print("No logs available for this service.")
         return
 
     screen_name = get_screen_name(project_name, name)
+    _inject_detach_hint(screen_name)
     os.system(f"screen -r {screen_name}")
 
 
