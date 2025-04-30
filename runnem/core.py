@@ -350,6 +350,11 @@ def start_service(name: str, config: Dict) -> None:
         print(f"❌ Unknown service: {name}")
         return
 
+    # Check if the service is already running in the current project
+    if is_service_running(project_name, name):
+        print(f"⚠️ {name} is already running in project '{project_name}'.")
+        return
+
     # Check and clear port before starting
     if not check_and_clear_port(name, config):
         print("❌ Service not started.")
