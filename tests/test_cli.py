@@ -104,6 +104,44 @@ def test_cli_restart_with_service(temp_project_dir, cli_runner):
         stop_all_running_services()
 
 
+def test_cli_restart_stopped_service(temp_project_dir, cli_runner):
+    """Test the restart command on a stopped service (should start it)."""
+    # Create a config with a long-running service
+    config = {
+        "project_name": "test_restart_stopped_project",
+        "services": {
+            "stopped_service": {
+                "command": "sleep 30",  # Long enough to test restart
+                "url": "http://localhost:8082",
+            }
+        },
+    }
+
+    # Write config file
+    config_path = Path(temp_project_dir) / "runnem.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config, f)
+
+    try:
+        # Verify service is not running initially
+        assert not is_service_running("test_restart_stopped_project", "stopped_service")
+
+        # Restart the stopped service (should start it)
+        result = cli_runner.invoke(main, ["restart", "stopped_service"])
+        assert result.exit_code == 0
+        assert "Restarting services" in result.output
+
+        # Give it a moment to start
+        time.sleep(1)
+
+        # Verify service is now running
+        assert is_service_running("test_restart_stopped_project", "stopped_service")
+
+    finally:
+        # Clean up - stop all services
+        stop_all_running_services()
+
+
 def test_cli_list_no_project(cli_runner):
     """Test the list command without a project."""
     result = cli_runner.invoke(main, ["list"])
