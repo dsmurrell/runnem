@@ -1,5 +1,6 @@
 """Command-line interface for runnem."""
 
+import time
 import click
 from importlib.metadata import version
 
@@ -32,6 +33,10 @@ Examples:
     $ runnem down
 
     $ runnem down backend
+
+    $ runnem restart
+
+    $ runnem restart frontend
 
     $ runnem list
 
@@ -97,6 +102,39 @@ def down(service):
     try:
         config = get_project_config(project_name)
         stop_service(service, config)
+    except FileNotFoundError as e:
+        click.echo(f"❌ {e}")
+        return
+
+
+@main.command()
+@click.argument("service", required=False)
+def restart(service):
+    """Restart all services, or a specific service if specified."""
+    project_name = get_project_name()
+    if not project_name:
+        click.echo("❌ No project found. Run 'runnem init <project_name>' first.")
+        return
+
+    try:
+        config = get_project_config(project_name)
+
+        # First stop the service(s)
+        click.echo("🔄 Restarting services...")
+        if service is None:
+            stop_all_running_services()
+        else:
+            stop_service(service, config)
+
+        # Brief pause to ensure services are fully stopped
+        time.sleep(1)
+
+        # Then start the service(s)
+        if service is None:
+            start_all_services(config)
+        else:
+            start_service(service, config)
+
     except FileNotFoundError as e:
         click.echo(f"❌ {e}")
         return

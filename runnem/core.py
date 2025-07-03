@@ -396,7 +396,7 @@ def view_logs(name: str, config: Dict) -> None:
         return
 
     screen_name = get_screen_name(project_name, name)
-    _inject_detach_hint(screen_name)
+    # _inject_detach_hint(screen_name) // removed for now as it inserts this what should be user feedback straight into any inputs that the program is requiring from the user.
     os.system(f"screen -r {screen_name}")
 
 
