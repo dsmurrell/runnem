@@ -142,6 +142,126 @@ def test_cli_restart_stopped_service(temp_project_dir, cli_runner):
         stop_all_running_services()
 
 
+def test_cli_run_command(temp_project_dir, cli_runner):
+    """Test the run command (up + log)."""
+    # Clean up any existing services first to avoid conflicts
+    stop_all_running_services()
+
+    # Create a config with a service
+    config = {
+        "project_name": "test_run_project",
+        "services": {
+            "test_service": {
+                "command": "echo 'Hello from test service'",
+                "url": "http://localhost:8083",
+            },
+        },
+    }
+
+    # Write config file
+    config_path = Path(temp_project_dir) / "runnem.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config, f)
+
+    try:
+        # Test run command - this should start the service and then try to view logs
+        # Since the service will exit quickly (echo command), we expect it to start
+        # but the log viewing might not find a running screen session
+        result = cli_runner.invoke(main, ["run", "test_service"])
+        # The command should complete successfully even if log viewing fails
+        assert result.exit_code == 0
+        # Should contain evidence that it tried to start the service
+        assert "Starting test_service" in result.output
+
+    finally:
+        # Clean up - stop all services
+        stop_all_running_services()
+
+
+def test_cli_rerun_command(temp_project_dir, cli_runner):
+    """Test the rerun command (restart + log)."""
+    # Clean up any existing services first to avoid conflicts
+    stop_all_running_services()
+
+    # Create a config with a service
+    config = {
+        "project_name": "test_rerun_project",
+        "services": {
+            "test_service": {
+                "command": "echo 'Hello from rerun test'",  # Quick command for testing
+                "url": "http://localhost:8084",
+            },
+        },
+    }
+
+    # Write config file
+    config_path = Path(temp_project_dir) / "runnem.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config, f)
+
+    try:
+        # Test rerun command - this should restart the service and then try to view logs
+        result = cli_runner.invoke(main, ["rerun", "test_service"])
+        assert result.exit_code == 0
+        assert "Restarting service" in result.output
+
+    finally:
+        # Clean up - stop all services
+        stop_all_running_services()
+
+
+def test_cli_run_no_project(cli_runner):
+    """Test the run command when no project is found."""
+    result = cli_runner.invoke(main, ["run", "test_service"])
+    assert result.exit_code == 0
+    assert "No project found" in result.output
+
+
+def test_cli_rerun_no_project(cli_runner):
+    """Test the rerun command when no project is found."""
+    result = cli_runner.invoke(main, ["rerun", "test_service"])
+    assert result.exit_code == 0
+    assert "No project found" in result.output
+
+
+def test_cli_run_unknown_service(temp_project_dir, cli_runner):
+    """Test the run command with an unknown service."""
+    # Create a config with no services
+    config = {
+        "project_name": "test_run_unknown_project",
+        "services": {},
+    }
+
+    # Write config file
+    config_path = Path(temp_project_dir) / "runnem.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config, f)
+
+    # Test run command with unknown service
+    result = cli_runner.invoke(main, ["run", "unknown_service"])
+    assert result.exit_code == 0
+    assert "Unknown service: unknown_service" in result.output
+
+
+def test_cli_rerun_unknown_service(temp_project_dir, cli_runner):
+    """Test the rerun command with an unknown service."""
+    # Create a config with no services
+    config = {
+        "project_name": "test_rerun_unknown_project",
+        "services": {},
+    }
+
+    # Write config file
+    config_path = Path(temp_project_dir) / "runnem.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(config, f)
+
+    # Test rerun command with unknown service
+    result = cli_runner.invoke(main, ["rerun", "unknown_service"])
+    assert result.exit_code == 0
+    assert "Unknown service: unknown_service" in result.output
+
+
 def test_cli_list_no_project(cli_runner):
     """Test the list command without a project."""
     result = cli_runner.invoke(main, ["list"])

@@ -66,6 +66,8 @@ services:
 | Start one service      | `runnem up <service>`     |
 | Stop all services      | `runnem down`             |
 | Stop one service       | `runnem down <service>`   |
+| Start service + logs   | `runnem run <service>`    |
+| Restart service + logs | `runnem rerun <service>`  |
 | View live logs         | `runnem log <service>`    |
 | List status            | `runnem list` (or `ls`)   |
 | Free a busy port       | `runnem kill <port>`      |

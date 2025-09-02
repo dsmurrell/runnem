@@ -38,6 +38,10 @@ Examples:
 
     $ runnem restart frontend
 
+    $ runnem run frontend
+
+    $ runnem rerun frontend
+
     $ runnem list
 
     $ runnem ls
@@ -134,6 +138,68 @@ def restart(service):
             start_all_services(config)
         else:
             start_service(service, config)
+
+    except FileNotFoundError as e:
+        click.echo(f"❌ {e}")
+        return
+
+
+@main.command()
+@click.argument("service")
+def run(service):
+    """Start a service and immediately view its logs."""
+    project_name = get_project_name()
+    if not project_name:
+        click.echo("❌ No project found. Run 'runnem init <project_name>' first.")
+        return
+
+    # Check for other project services before doing anything else
+    if check_other_projects(project_name):
+        raise click.Abort()
+
+    try:
+        config = get_project_config(project_name)
+
+        # First start the service
+        start_service(service, config)
+
+        # Then view its logs
+        if service not in config.get("services", {}):
+            click.echo(f"❌ Unknown service: {service}")
+            return
+        view_logs(service, config)
+
+    except FileNotFoundError as e:
+        click.echo(f"❌ {e}")
+        return
+
+
+@main.command()
+@click.argument("service")
+def rerun(service):
+    """Restart a service and immediately view its logs."""
+    project_name = get_project_name()
+    if not project_name:
+        click.echo("❌ No project found. Run 'runnem init <project_name>' first.")
+        return
+
+    try:
+        config = get_project_config(project_name)
+
+        # First restart the service
+        click.echo("🔄 Restarting service...")
+        stop_service(service, config)
+
+        # Brief pause to ensure service is fully stopped
+        time.sleep(1)
+
+        start_service(service, config)
+
+        # Then view its logs
+        if service not in config.get("services", {}):
+            click.echo(f"❌ Unknown service: {service}")
+            return
+        view_logs(service, config)
 
     except FileNotFoundError as e:
         click.echo(f"❌ {e}")
